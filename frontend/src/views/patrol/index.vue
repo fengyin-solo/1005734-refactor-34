@@ -37,13 +37,15 @@
       <thead>
         <tr>
           <th v-for="column in columns" :key="column">{{ column }}</th>
+          <th>巡视结论</th>
           <th>当前状态</th>
           <th>可执行动作</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="row in rows" :key="String(row.id)">
+        <tr v-for="row in rows" :key="String(row.id)" :class="{ 'row-finding': hasFinding(row) }">
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td>{{ patrolConclusion(row) }}</td>
           <td>{{ row.status }}</td>
           <td class="row-actions">
             <button
@@ -51,6 +53,8 @@
               :key="action"
               class="link"
               type="button"
+              :disabled="action === '上报问题' && isReported(row)"
+              :title="action === '上报问题' && isReported(row) ? '该趟巡视已上报，再提交也只算一遍' : ''"
               @click="runAction(action, row)"
             >
               {{ action }}
@@ -58,7 +62,7 @@
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td :colspan="columns.length + 2" class="empty-state">暂无设备巡视数据，可先登记巡视记录</td>
+          <td :colspan="columns.length + 3" class="empty-state">暂无设备巡视数据，可先登记巡视记录</td>
         </tr>
       </tbody>
     </table>
@@ -79,13 +83,22 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import {
+  PATROL_STATUS_DONE,
+  PATROL_STATUS_PENDING,
+  PATROL_STATUS_REPORTED,
+  countPatrolFindingsInMonth,
+  currentMonth,
+  hasFinding,
+  isReported,
+  patrolConclusion,
+} from '@/domain/patrol-finding'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('patrol')
 const columns = ["巡视编号", "巡视变电站", "巡视路线", "巡视人", "巡视日期", "发现缺陷数", "处理情况", "巡视状态"]
 const actions = ["提交巡视", "确认完成", "上报问题"]
 const statuses = ["待巡视", "巡视中", "已完成", "已上报"]
-const stats = [{"label": "待巡视站点", "value": 0}, {"label": "已完成巡视", "value": 0}, {"label": "本月发现问题数", "value": 0}]
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
@@ -98,6 +111,24 @@ const statusSummary = computed(() =>
     count: rows.value.filter((row) => String(row.status) === status).length,
   })),
 )
+
+// 三张统计卡都走共用口径；「本月发现问题数」与概览是同一份算法。
+const stats = computed(() => [
+  {
+    label: "待巡视站点",
+    value: rows.value.filter((row) => String(row.status) === PATROL_STATUS_PENDING).length,
+  },
+  {
+    label: "已完成巡视",
+    value: rows.value.filter((row) =>
+      [PATROL_STATUS_DONE, PATROL_STATUS_REPORTED].includes(String(row.status)),
+    ).length,
+  },
+  {
+    label: "本月发现问题数",
+    value: countPatrolFindingsInMonth(rows.value, currentMonth()),
+  },
+])
 
 function resetFilters() {
   filters.value = {}
@@ -114,6 +145,10 @@ function openCreate() {
 
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
+  if (action === '上报问题' && isReported(row)) {
+    errorMessage.value = '该趟巡视已经上报过，同一趟巡视再提交只算一遍'
+    return
+  }
   const result = applyAction(meta.key, Number(row.id), action)
   if (!result.ok) {
     errorMessage.value = result.message
@@ -135,3 +170,14 @@ function reload() {
 
 onMounted(reload)
 </script>
+
+<style scoped>
+.row-finding td {
+  background-color: #fff6f0;
+}
+.link:disabled {
+  color: var(--muted, #999);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+</style>

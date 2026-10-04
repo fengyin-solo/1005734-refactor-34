@@ -34,5 +34,14 @@ export type ActionResult = {
 
 export type OverviewResult = {
   cards: { label: string; value: number }[]
-  modules: { name: string; created: number; pending: number; abnormal: number }[]
+  modules: {
+    name: string
+    created: number
+    pending: number
+    abnormal: number
+    /** 巡视模块专有：本月巡视发现问题的记录数，三处共用同一口径。 */
+    findingsMonth?: number
+  }[]
+  /** 概览统计所采用的月份（YYYY-MM）。 */
+  month: string
 }

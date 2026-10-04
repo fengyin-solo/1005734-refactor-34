@@ -79,19 +79,28 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { judgmentLabel, monthlyProblemCount } from '@/data/patrol'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('patrol')
-const columns = ["巡视编号", "巡视变电站", "巡视路线", "巡视人", "巡视日期", "发现缺陷数", "处理情况", "巡视状态"]
+const columns = ["巡视编号", "巡视变电站", "巡视路线", "巡视人", "巡视日期", "发现缺陷数", "处理情况", "问题判定", "巡视状态"]
 const actions = ["提交巡视", "确认完成", "上报问题"]
 const statuses = ["待巡视", "巡视中", "已完成", "已上报"]
-const stats = [{"label": "待巡视站点", "value": 0}, {"label": "已完成巡视", "value": 0}, {"label": "本月发现问题数", "value": 0}]
 
 const rows = ref<EntryRow[]>([])
+const allPatrolRows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+
+// 统计卡片与导出册子、运营概览走同一份巡视结论判定，结论不再对不上。
+const stats = computed(() => [
+  { label: '待巡视站点', value: allPatrolRows.value.filter((row) => String(row.status) === '待巡视').length },
+  { label: '已完成巡视', value: allPatrolRows.value.filter((row) => String(row.status) === '已完成').length },
+  { label: '本月发现问题数', value: monthlyProblemCount(allPatrolRows.value) },
+])
+
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
@@ -126,7 +135,8 @@ function reload() {
   errorMessage.value = ''
   try {
     const payload = listEntries(meta.key, filters.value)
-    rows.value = payload.items
+    allPatrolRows.value = listEntries(meta.key).items
+    rows.value = payload.items.map((row) => ({ ...row, 问题判定: judgmentLabel(row) }))
     total.value = payload.total
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '设备巡视列表读取失败'

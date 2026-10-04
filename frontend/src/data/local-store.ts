@@ -1,3 +1,4 @@
+import { PATROL_KEY, backfillPatrolRows } from './patrol'
 import { SEED_ROWS } from './seed'
 import type { EntryRow } from './types'
 
@@ -20,7 +21,15 @@ function readStorage(): Record<string, EntryRow[]> {
   }
   try {
     const parsed = JSON.parse(raw) as Record<string, EntryRow[]>
-    return { ...fallback, ...parsed }
+    const merged = { ...fallback, ...parsed }
+    // 存量巡视记录按巡视日期顺序回填发现缺陷数、归一处理情况；已上报的保留当时结论。
+    // 回填幂等，只有真有变化才写回，避免每次打开都重写存储。
+    const patrol = backfillPatrolRows(merged[PATROL_KEY] ?? [])
+    if (JSON.stringify(patrol) !== JSON.stringify(merged[PATROL_KEY] ?? [])) {
+      merged[PATROL_KEY] = patrol
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
+    }
+    return merged
   } catch {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(fallback))
     return fallback
